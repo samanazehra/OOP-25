@@ -26,18 +26,128 @@
 #include <iostream>
 using namespace std;
 
-class Wallet
-{
-    double balance;
+#include <iostream>
+#include <string>
+
+using namespace std;
+
+class TransactionLimiter {
+public:
+    virtual bool canDeposit(double amount, double limit) const = 0;
+    virtual bool canWithdraw(double amount, double limit, double balance) const = 0;
+    virtual void recordDeposit(double amount) = 0;
+    virtual void recordWithdrawal(double amount) = 0;
+    virtual void reset() = 0;
+    virtual ~TransactionLimiter() {}
+};
+
+class DailyLimitTracker : public TransactionLimiter {
+private:
+    double deposited;
+    double withdrawn;
 
 public:
-    Wallet(double b)
-    {
-        if (b >= 0)
-            balance = b;
-        else
-            cerr << "Balance cannot be negative\n";
+    DailyLimitTracker() : deposited(0), withdrawn(0) {}
+
+    bool canDeposit(double amount, double limit) const override {
+        return (deposited + amount <= limit);
     }
-    
+
+    bool canWithdraw(double amount, double limit, double balance) const override {
+        return (withdrawn + amount <= limit && amount <= balance);
+    }
+
+    void recordDeposit(double amount) override {
+        deposited += amount;
+    }
+
+    void recordWithdrawal(double amount) override {
+        withdrawn += amount;
+    }
+
+    void reset() override {
+        deposited = 0;
+        withdrawn = 0;
+    }
 };
-int main() {}
+
+class Wallet {
+private:
+    double balance;
+    double depositLimit;
+    double withdrawLimit;
+    TransactionLimiter* tracker;
+
+public:
+    Wallet(double depLimit, double witLimit)
+        : balance(0), depositLimit(depLimit), withdrawLimit(witLimit), tracker(new DailyLimitTracker()) {}
+
+    ~Wallet() { delete tracker; }
+
+    bool deposit(double amount) {
+        if (amount <= 0 || !tracker->canDeposit(amount, depositLimit)) return false;
+        balance += amount;
+        tracker->recordDeposit(amount);
+        return true;
+    }
+
+    bool withdraw(double amount) {
+        if (amount <= 0 || !tracker->canWithdraw(amount, withdrawLimit, balance)) return false;
+        balance -= amount;
+        tracker->recordWithdrawal(amount);
+        return true;
+    }
+
+    double getBalance() const {
+        return balance;
+    }
+
+    void resetLimits() {
+        tracker->reset();
+    }
+};
+
+class User {
+private:
+    string userID;
+    string name;
+    Wallet wallet;
+
+public:
+    User(const string& uid, const string& uname, double depLimit, double witLimit)
+        : userID(uid), name(uname), wallet(depLimit, witLimit) {}
+
+    bool deposit(double amount) {
+        return wallet.deposit(amount);
+    }
+
+    bool withdraw(double amount) {
+        return wallet.withdraw(amount);
+    }
+
+    void displayBalance() const {
+        cout << name << "'s Balance: $" << wallet.getBalance() << endl;
+    }
+
+    void resetTransactionLimits() {
+        wallet.resetLimits();
+    }
+};
+
+int main() {
+    User Samana("001", "Samana", 500.0, 300.0);
+    User Usman("002", "Usman", 1000.0, 500.0);
+
+    Samana.deposit(200);
+    Samana.withdraw(50);
+    Samana.displayBalance();
+
+    Usman.deposit(800);
+    Usman.withdraw(400);
+    Usman.displayBalance();
+    
+    Samana.resetTransactionLimits();
+    Usman.resetTransactionLimits();
+
+    return 0;
+}
